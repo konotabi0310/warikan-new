@@ -1,103 +1,121 @@
 "use client";
 
-import { useState, useEffect } from "react";
 import { useUser } from "@/contexts/UserContext";
 import { db } from "@/lib/firebase";
 import { doc, updateDoc } from "firebase/firestore";
-import { Input } from "@/components/ui/input";
-import { Button } from "@/components/ui/button";
-import { Label } from "@/components/ui/label";
+import { useState } from "react";
+import Image from "next/image";
+import { Dialog } from "@headlessui/react";
 
 export default function SettingsPage() {
-  const userContext = useUser();
-  const user = userContext?.user;
+  const { user, setUser } = useUser()!;
+  const [selectedImage, setSelectedImage] = useState<string | null>(null);
+  const [isModalOpen, setIsModalOpen] = useState(false);
 
-  const [name, setName] = useState("");
-  const [avatarUrl, setAvatarUrl] = useState("");
-  const [saving, setSaving] = useState(false);
-
-  useEffect(() => {
-    if (user) {
-      setName(user.name || "");
-      setAvatarUrl(user.avatarUrl || "");
-    }
-  }, [user]);
-
-  const handleUpdate = async () => {
-    if (!user?.uid) {
-      alert("ユーザー情報が見つかりません");
-      return;
-    }
-
-    setSaving(true);
-    try {
-      const ref = doc(db, "users", user.uid); // ← uid を Firestore のIDとして使用
-      await updateDoc(ref, {
-        name,
-        avatarUrl,
-      });
-      alert("プロフィールを更新しました");
-    } catch (err) {
-      console.error("更新エラー:", err);
-      alert("更新に失敗しました");
-    } finally {
-      setSaving(false);
+  const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setSelectedImage(reader.result as string);
+      };
+      reader.readAsDataURL(file);
     }
   };
 
-  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
+  const handleUpdate = async () => {
+    if (!user || !selectedImage) return;
 
-    // 簡易的なローカルURL表示（アップロード処理未実装）
-    const localUrl = URL.createObjectURL(file);
-    setAvatarUrl(localUrl);
+    const userRef = doc(db, "users", user.uid);
+    await updateDoc(userRef, { avatarUrl: selectedImage });
 
-    // TODO: 実際は Firebase Storage にアップして URL を取得 → setAvatarUrl に入れる
+    setUser({ ...user, avatarUrl: selectedImage });
+    alert("プロフィール画像を更新しました！");
+  };
+
+  const handleLogout = async () => {
+    const { signOut } = await import("firebase/auth");
+    const { auth } = await import("@/lib/firebase");
+    await signOut(auth);
+    window.location.href = "/";
   };
 
   return (
-    <main className="min-h-screen bg-white px-6 py-10">
-      <h1 className="text-xl font-bold text-[#FF6B35] mb-6">プロフィール設定</h1>
+    <div className="p-6 max-w-md mx-auto text-center">
+      <h1 className="text-2xl font-bold mb-6 text-[#FF6B35]">設定</h1>
 
-      <div className="space-y-4 max-w-md">
-        {/* 名前 */}
-        <div>
-          <Label>名前</Label>
-          <Input
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            className="mt-1 rounded-xl"
-          />
-        </div>
-
-        {/* アバター */}
-        <div>
-          <Label>アイコン画像</Label>
-          <Input
-            type="file"
-            accept="image/*"
-            onChange={handleFileChange}
-            className="mt-1"
-          />
-          {avatarUrl && (
-            <img
-              src={avatarUrl}
-              alt="アイコンプレビュー"
-              className="w-20 h-20 rounded-full mt-2 object-cover border"
+      {/* プロフィール画像 */}
+      <div className="flex flex-col items-center gap-3 mb-6">
+        <div className="w-28 h-28 rounded-full overflow-hidden border-2 border-[#FF6B35]">
+          {selectedImage || user?.avatarUrl ? (
+            <Image
+              src={selectedImage || user?.avatarUrl || ""}
+              alt="avatar"
+              width={112}
+              height={112}
+              className="object-cover w-full h-full"
             />
+          ) : (
+            <div className="w-full h-full flex items-center justify-center bg-gray-100 text-gray-400">
+              No Image
+            </div>
           )}
         </div>
 
-        {/* 更新ボタン */}
-        <Button
+        <input
+          type="file"
+          accept="image/*"
+          onChange={handleImageChange}
+          className="text-sm"
+        />
+
+        <button
           onClick={handleUpdate}
-          disabled={saving}
-          className="w-full mt-6 rounded-xl bg-[#FF6B35] hover:bg-[#e85d2d] text-white"
+          className="mt-2 px-6 py-2 bg-[#FF6B35] text-white rounded-xl"
         >
-          {saving ? "保存中..." : "更新する"}
-        </Button>
+          プロフィール更新
+        </button>
       </div>
-    </main>
+
+      {/* ログアウトリンク */}
+      <div className="mt-8">
+        <a
+          href="#"
+          onClick={(e) => {
+            e.preventDefault();
+            setIsModalOpen(true);
+          }}
+          className="text-[#FF6B35] underline text-base"
+        >
+          ログアウト
+        </a>
+      </div>
+
+      {/* モーダル */}
+      <Dialog open={isModalOpen} onClose={() => setIsModalOpen(false)} className="relative z-50">
+        <div className="fixed inset-0 bg-black/30" aria-hidden="true" />
+        <div className="fixed inset-0 flex items-center justify-center p-4">
+          <Dialog.Panel className="bg-white p-6 rounded-xl shadow-lg max-w-sm w-full text-center">
+            <Dialog.Title className="text-lg font-semibold mb-4">
+              ログアウトしますか？
+            </Dialog.Title>
+            <div className="flex justify-center gap-4">
+              <button
+                onClick={() => setIsModalOpen(false)}
+                className="px-4 py-2 border rounded-xl"
+              >
+                キャンセル
+              </button>
+              <button
+                onClick={handleLogout}
+                className="px-4 py-2 bg-[#FF6B35] text-white rounded-xl"
+              >
+                ログアウト
+              </button>
+            </div>
+          </Dialog.Panel>
+        </div>
+      </Dialog>
+    </div>
   );
 }
