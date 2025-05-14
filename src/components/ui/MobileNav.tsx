@@ -1,13 +1,15 @@
+// src/components/MobileNav.tsx
 "use client";
 
 import { usePathname, useRouter } from "next/navigation";
-import { Home, List, PlusCircle, Settings } from "lucide-react";
+import { Home, List, PlusCircle, CreditCard, Settings } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const navItems = [
   { label: "ホーム", icon: Home, href: "/home" },
   { label: "一覧", icon: List, href: "/expense/list" },
   { label: "追加", icon: PlusCircle, href: "/expense/new" },
+  { label: "精算", icon: CreditCard, href: "/settlement" },
   { label: "設定", icon: Settings, href: "/settings" },
 ];
 

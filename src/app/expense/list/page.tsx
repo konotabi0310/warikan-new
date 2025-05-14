@@ -1,3 +1,4 @@
+// src/app/expense/list/page.tsx
 "use client";
 
 import { useEffect, useState } from "react";
@@ -12,6 +13,9 @@ import {
   doc,
   updateDoc,
 } from "firebase/firestore";
+import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
+import { Label } from "@/components/ui/label";
 
 type Expense = {
   id: string;
@@ -29,8 +33,18 @@ export default function ExpenseListPage() {
   const [monthFilter, setMonthFilter] = useState(() =>
     new Date().toISOString().slice(0, 7)
   );
-  const [statusFilter, setStatusFilter] = useState<"all" | "settled" | "unsettled">("all");
+  const [statusFilter, setStatusFilter] = useState<
+    "all" | "settled" | "unsettled"
+  >("all");
   const [paidByMap, setPaidByMap] = useState<Record<string, string>>({});
+
+  // カテゴリーごとの色マップ
+  const categoryStyles: Record<string, { bg: string; text: string }> = {
+    食費: { bg: "bg-yellow-50", text: "text-yellow-600" },
+    家賃: { bg: "bg-blue-50", text: "text-blue-600" },
+    光熱費: { bg: "bg-green-50", text: "text-green-600" },
+    その他: { bg: "bg-gray-50", text: "text-gray-600" },
+  };
 
   useEffect(() => {
     if (!user?.pairId) return;
@@ -38,7 +52,7 @@ export default function ExpenseListPage() {
     const fetchData = async () => {
       setLoading(true);
       try {
-        // 支払データ取得
+        // 費用取得
         const expenseQuery = query(
           collection(db, "expenses"),
           where("pairId", "==", user.pairId),
@@ -54,17 +68,15 @@ export default function ExpenseListPage() {
         const filteredByMonth = list.filter((exp) =>
           exp.date.startsWith(monthFilter)
         );
-
         // ステータスで絞り込み
         const filtered = filteredByMonth.filter((exp) => {
           if (statusFilter === "settled") return exp.settled;
           if (statusFilter === "unsettled") return !exp.settled;
           return true;
         });
-
         setExpenses(filtered);
 
-        // 支払者UID → 名前マップ作成
+        // 支払者UID→名前マップ
         const usersQuery = query(
           collection(db, "users"),
           where("pairId", "==", user.pairId)
@@ -145,42 +157,54 @@ export default function ExpenseListPage() {
         <p className="text-sm text-gray-500">この条件に合う費用がありません</p>
       ) : (
         <ul className="space-y-3">
-          {expenses.map((exp) => (
-            <li
-              key={exp.id}
-              className="bg-white p-4 rounded-xl shadow-sm border relative"
-            >
-              {/* カテゴリーラベル */}
-              <div className="inline-block px-2 py-1 rounded-md text-xs font-semibold text-[#FF6B35] bg-orange-50 mb-2">
-                {exp.category}
-              </div>
-
-              {/* 金額（目立たせる） */}
-              <div className="text-2xl font-bold text-[#FF6B35]">
-                ¥{exp.amount.toLocaleString()}
-              </div>
-
-              {/* 補足情報 */}
-              <div className="text-xs text-gray-500 mt-1">
-                {exp.date} / 支払者: {paidByMap[exp.paidBy] || "不明"}
-              </div>
-
-              {/* 現在のステータス */}
-              <div className="mt-2 text-sm">
-                <span className="mr-2">精算ステータス:</span>
-                <select
-                  value={exp.settled ? "settled" : "unsettled"}
-                  onChange={(e) =>
-                    handleStatusChange(exp.id, e.target.value === "settled")
-                  }
-                  className="border px-2 py-1 rounded text-sm"
+          {expenses.map((exp) => {
+            // カテゴリースタイル取得（デフォルトも設定）
+            const style = categoryStyles[exp.category] || {
+              bg: "bg-gray-50",
+              text: "text-gray-600",
+            };
+            return (
+              <li
+                key={exp.id}
+                className="bg-white p-4 rounded-xl shadow-sm border relative"
+              >
+                {/* カテゴリーラベル（色分け） */}
+                <div
+                  className={`inline-block px-2 py-1 rounded-md text-xs font-semibold ${style.text} ${style.bg} mb-2`}
                 >
-                  <option value="unsettled">未精算</option>
-                  <option value="settled">精算済み</option>
-                </select>
-              </div>
-            </li>
-          ))}
+                  {exp.category}
+                </div>
+
+                {/* 金額 */}
+                <div className="text-2xl font-bold text-[#FF6B35]">
+                  ¥{exp.amount.toLocaleString()}
+                </div>
+
+                {/* 補足 */}
+                <div className="text-xs text-gray-500 mt-1">
+                  {exp.date} / 支払者: {paidByMap[exp.paidBy] || "不明"}
+                </div>
+
+                {/* ステータス切替 */}
+                <div className="mt-2 text-sm">
+                  <span className="mr-2">精算ステータス:</span>
+                  <select
+                    value={exp.settled ? "settled" : "unsettled"}
+                    onChange={(e) =>
+                      handleStatusChange(
+                        exp.id,
+                        e.target.value === "settled"
+                      )
+                    }
+                    className="border px-2 py-1 rounded text-sm"
+                  >
+                    <option value="unsettled">未精算</option>
+                    <option value="settled">精算済み</option>
+                  </select>
+                </div>
+              </li>
+            );
+          })}
         </ul>
       )}
     </main>

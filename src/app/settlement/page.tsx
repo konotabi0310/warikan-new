@@ -1,3 +1,4 @@
+// src/app/settlement/page.tsx
 "use client";
 
 import { useEffect, useState } from "react";
@@ -6,141 +7,141 @@ import { db } from "@/lib/firebase";
 import { useUser } from "@/contexts/UserContext";
 import { Button } from "@/components/ui/button";
 
-interface Expense {
+interface ExpenseRaw {
   amount: number;
-  paidBy: string; // UIDで保存されている
+  paidBy: string;   // UID
   settled: boolean;
   pairId: string;
 }
 
 interface Settlement {
-  from: string; // UID
-  to: string;   // UID
+  fromUid: string;
+  toUid: string;
+  fromName: string;
+  toName: string;
   amount: number;
 }
 
 export default function SettlementPage() {
-  const { user } = useUser()!;
+  const { user } = useUser() || {};
   const [settlements, setSettlements] = useState<Settlement[]>([]);
-  const [uidNameMap, setUidNameMap] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    if (!user?.uid || !user?.pairId) return;
+    if (!user?.pairId) return;
 
     const fetchData = async () => {
       setLoading(true);
 
-      try {
-        // ユーザー名マップ取得
-        const usersSnapshot = await getDocs(
-          query(collection(db, "users"), where("pairId", "==", user.pairId))
-        );
-        const uidName: Record<string, string> = {};
-        usersSnapshot.docs.forEach((doc) => {
-          const data = doc.data();
-          uidName[data.uid] = data.name;
-        });
-        setUidNameMap(uidName);
+      // 1) ペアのユーザー一覧取得 → UID→名前マップ
+      const usersSnap = await getDocs(
+        query(collection(db, "users"), where("pairId", "==", user.pairId))
+      );
+      const nameMap: Record<string, string> = {};
+      usersSnap.docs.forEach((d) => {
+        nameMap[d.id] = d.data().name;
+      });
 
-        // 費用データ取得
-        const q = query(
+      // 2) 未精算費用取得
+      const expSnap = await getDocs(
+        query(
           collection(db, "expenses"),
           where("pairId", "==", user.pairId),
           where("settled", "==", false)
-        );
-        const snapshot = await getDocs(q);
-        const data: Expense[] = snapshot.docs.map((doc) => doc.data() as Expense);
+        )
+      );
+      const raw = expSnap.docs.map((d) => d.data() as ExpenseRaw);
 
-        // 合計金額計算
-        const totals: Record<string, number> = {};
-        data.forEach((e) => {
-          totals[e.paidBy] = (totals[e.paidBy] || 0) + e.amount;
-        });
+      // 3) 支払者毎の合計
+      const totals: Record<string, number> = {};
+      raw.forEach((e) => {
+        totals[e.paidBy] = (totals[e.paidBy] || 0) + e.amount;
+      });
 
-        const members = Object.keys(totals);
-        const totalAmount = Object.values(totals).reduce((a, b) => a + b, 0);
-        const avg = totalAmount / members.length;
+      const members = Object.keys(totals);
+      const sum = Object.values(totals).reduce((a, b) => a + b, 0);
+      const avg = sum / members.length;
 
-        const balance: Record<string, number> = {};
-        members.forEach((uid) => {
-          balance[uid] = Math.round(totals[uid] - avg);
-        });
+      // 4) 各メンバーの収支
+      const balance: Record<string, number> = {};
+      members.forEach((uid) => {
+        balance[uid] = Math.round(totals[uid] - avg);
+      });
 
-        const payers = members.filter((uid) => balance[uid] < 0);
-        const receivers = members.filter((uid) => balance[uid] > 0);
-        const result: Settlement[] = [];
-
-        let i = 0, j = 0;
-        while (i < payers.length && j < receivers.length) {
-          const payer = payers[i];
-          const receiver = receivers[j];
-          const payAmount = Math.min(-balance[payer], balance[receiver]);
-
-          if (payAmount > 0) {
-            result.push({ from: payer, to: receiver, amount: payAmount });
-            balance[payer] += payAmount;
-            balance[receiver] -= payAmount;
-          }
-
-          if (balance[payer] === 0) i++;
-          if (balance[receiver] === 0) j++;
+      // 5) 貪欲法で精算ペアを決定
+      const payers = members.filter((uid) => balance[uid] < 0);
+      const receivers = members.filter((uid) => balance[uid] > 0);
+      const result: Settlement[] = [];
+      let i = 0, j = 0;
+      while (i < payers.length && j < receivers.length) {
+        const p = payers[i];
+        const r = receivers[j];
+        const amt = Math.min(-balance[p], balance[r]);
+        if (amt > 0) {
+          result.push({
+            fromUid: p,
+            toUid: r,
+            fromName: nameMap[p] || "不明",
+            toName: nameMap[r] || "不明",
+            amount: amt,
+          });
+          balance[p] += amt;
+          balance[r] -= amt;
         }
-
-        setSettlements(result);
-      } catch (err) {
-        console.error("清算データ取得エラー", err);
-      } finally {
-        setLoading(false);
+        if (balance[p] === 0) i++;
+        if (balance[r] === 0) j++;
       }
+
+      setSettlements(result);
+      setLoading(false);
     };
 
     fetchData();
   }, [user]);
 
+  if (!user) {
+    return (
+      <main className="min-h-screen flex items-center justify-center bg-white">
+        <p className="text-gray-500">ログイン情報を確認しています…</p>
+      </main>
+    );
+  }
+
   return (
-    <main className="min-h-screen bg-[#FAFAF8] px-4 py-6">
-      <h1 className="text-xl font-bold text-center mb-6 text-[#FF6B35]">
-        清算の状況
-      </h1>
+    <main className="min-h-screen flex flex-col items-center bg-white px-6 py-10">
+      <h1 className="text-2xl font-bold text-[#FF6B35] mb-6">清算の状況</h1>
 
-      {!user?.uid || !user?.pairId ? (
-        <p className="text-center text-sm text-gray-500">ユーザー情報を読み込んでいます...</p>
-      ) : loading ? (
-        <p className="text-center text-sm text-gray-500">読み込み中...</p>
+      {loading ? (
+        <p className="text-gray-500">読み込み中…</p>
       ) : settlements.length === 0 ? (
-        <p className="text-center text-sm text-gray-500 mt-10">
-          精算が必要な費用はありません
-        </p>
+        <p className="text-gray-500">精算が必要な費用はありません</p>
       ) : (
-        <div className="space-y-4">
-          {settlements.map((item, index) => {
-            const fromName = uidNameMap[item.from] || "不明なユーザー";
-            const toName = uidNameMap[item.to] || "不明なユーザー";
-            const isPayer = item.from === user.uid;
-
+        <div className="w-full max-w-md space-y-4">
+          {settlements.map((s, idx) => {
+            const isPayer = s.fromUid === user.uid;
             return (
               <div
-                key={index}
-                className="bg-white p-4 rounded-xl shadow-md flex flex-col gap-3"
+                key={idx}
+                className="bg-white p-4 rounded-xl shadow-sm"
               >
-                <div className="text-sm text-gray-600 text-center">
-                  <span className="font-semibold text-gray-800">{fromName}</span> は{" "}
-                  <span className="font-semibold text-gray-800">{toName}</span> に
-                </div>
+                {/* 誰が誰にいくら */}
+                <p className="text-sm text-gray-700 mb-2">
+                  {s.fromName} が {s.toName} に支払う金額
+                </p>
 
-                <div className="text-center text-2xl font-bold text-[#FF6B35]">
-                  ¥{item.amount.toLocaleString()}
-                </div>
+                {/* 金額 */}
+                <p className="text-3xl font-bold text-[#FF6B35] mb-4">
+                  ¥{s.amount.toLocaleString()}
+                </p>
 
+                {/* アクションボタン */}
                 {isPayer ? (
-                  <Button className="bg-[#FF6B35] hover:bg-[#e85d2d] w-full rounded-xl text-white">
+                  <Button className="w-full bg-[#FF6B35] hover:bg-[#e85d2d] text-white rounded-xl">
                     PayPayで支払う
                   </Button>
                 ) : (
                   <Button
-                    variant="outline"
-                    className="w-full rounded-xl text-[#FF6B35] border-[#FF6B35]"
+                    className="w-full bg-[#00C300] hover:bg-green-600 text-white rounded-xl"
                   >
                     LINEで送金リンクを送る
                   </Button>
