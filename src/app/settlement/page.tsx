@@ -8,30 +8,42 @@ import { Button } from "@/components/ui/button";
 
 interface Expense {
   amount: number;
-  paidBy: string;
+  paidBy: string; // UIDで保存されている
   settled: boolean;
   pairId: string;
 }
 
 interface Settlement {
-  from: string;
-  to: string;
+  from: string; // UID
+  to: string;   // UID
   amount: number;
 }
 
 export default function SettlementPage() {
-  const userContext = useUser();
-  const user = userContext?.user;
+  const { user } = useUser()!;
   const [settlements, setSettlements] = useState<Settlement[]>([]);
+  const [uidNameMap, setUidNameMap] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    if (!user?.name || !user?.pairId) return;
+    if (!user?.uid || !user?.pairId) return;
 
     const fetchData = async () => {
       setLoading(true);
 
       try {
+        // ユーザー名マップ取得
+        const usersSnapshot = await getDocs(
+          query(collection(db, "users"), where("pairId", "==", user.pairId))
+        );
+        const uidName: Record<string, string> = {};
+        usersSnapshot.docs.forEach((doc) => {
+          const data = doc.data();
+          uidName[data.uid] = data.name;
+        });
+        setUidNameMap(uidName);
+
+        // 費用データ取得
         const q = query(
           collection(db, "expenses"),
           where("pairId", "==", user.pairId),
@@ -40,6 +52,7 @@ export default function SettlementPage() {
         const snapshot = await getDocs(q);
         const data: Expense[] = snapshot.docs.map((doc) => doc.data() as Expense);
 
+        // 合計金額計算
         const totals: Record<string, number> = {};
         data.forEach((e) => {
           totals[e.paidBy] = (totals[e.paidBy] || 0) + e.amount;
@@ -50,12 +63,12 @@ export default function SettlementPage() {
         const avg = totalAmount / members.length;
 
         const balance: Record<string, number> = {};
-        members.forEach((name) => {
-          balance[name] = Math.round(totals[name] - avg);
+        members.forEach((uid) => {
+          balance[uid] = Math.round(totals[uid] - avg);
         });
 
-        const payers = members.filter((n) => balance[n] < 0);
-        const receivers = members.filter((n) => balance[n] > 0);
+        const payers = members.filter((uid) => balance[uid] < 0);
+        const receivers = members.filter((uid) => balance[uid] > 0);
         const result: Settlement[] = [];
 
         let i = 0, j = 0;
@@ -87,11 +100,11 @@ export default function SettlementPage() {
 
   return (
     <main className="min-h-screen bg-[#FAFAF8] px-4 py-6">
-      <h1 className="text-xl font-bold text-center mb-4 text-[#FF6B35]">
+      <h1 className="text-xl font-bold text-center mb-6 text-[#FF6B35]">
         清算の状況
       </h1>
 
-      {!user?.name || !user?.pairId ? (
+      {!user?.uid || !user?.pairId ? (
         <p className="text-center text-sm text-gray-500">ユーザー情報を読み込んでいます...</p>
       ) : loading ? (
         <p className="text-center text-sm text-gray-500">読み込み中...</p>
@@ -102,24 +115,22 @@ export default function SettlementPage() {
       ) : (
         <div className="space-y-4">
           {settlements.map((item, index) => {
-            const isPayer = item.from === user.name;
+            const fromName = uidNameMap[item.from] || "不明なユーザー";
+            const toName = uidNameMap[item.to] || "不明なユーザー";
+            const isPayer = item.from === user.uid;
 
             return (
               <div
                 key={index}
-                className="bg-white p-4 rounded-xl shadow flex flex-col gap-2"
+                className="bg-white p-4 rounded-xl shadow-md flex flex-col gap-3"
               >
-                <div className="flex justify-between items-center">
-                  <div className="text-sm text-gray-700">
-                    {item.from} → {item.to}
-                  </div>
-                  <div
-                    className={`text-lg font-bold ${
-                      isPayer ? "text-[#FF6B35]" : "text-green-600"
-                    }`}
-                  >
-                    ¥{item.amount.toLocaleString()}
-                  </div>
+                <div className="text-sm text-gray-600 text-center">
+                  <span className="font-semibold text-gray-800">{fromName}</span> は{" "}
+                  <span className="font-semibold text-gray-800">{toName}</span> に
+                </div>
+
+                <div className="text-center text-2xl font-bold text-[#FF6B35]">
+                  ¥{item.amount.toLocaleString()}
                 </div>
 
                 {isPayer ? (

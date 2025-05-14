@@ -10,6 +10,7 @@ import { Dialog } from "@headlessui/react";
 export default function SettingsPage() {
   const { user, setUser } = useUser()!;
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
+  const [editedName, setEditedName] = useState(user?.name || "");
   const [isModalOpen, setIsModalOpen] = useState(false);
 
   const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -24,13 +25,30 @@ export default function SettingsPage() {
   };
 
   const handleUpdate = async () => {
-    if (!user || !selectedImage) return;
+    if (!user || !user.uid) {
+      alert("ユーザー情報が見つかりません");
+      return;
+    }
 
-    const userRef = doc(db, "users", user.uid);
-    await updateDoc(userRef, { avatarUrl: selectedImage });
+    const updates: { name?: string; avatarUrl?: string } = {};
+    if (editedName !== user.name) updates.name = editedName;
+    if (selectedImage) updates.avatarUrl = selectedImage;
 
-    setUser({ ...user, avatarUrl: selectedImage });
-    alert("プロフィール画像を更新しました！");
+    try {
+      const userRef = doc(db, "users", user.uid);
+      await updateDoc(userRef, updates);
+
+      setUser({
+        ...user,
+        name: editedName,
+        avatarUrl: selectedImage || user.avatarUrl,
+      });
+
+      alert("プロフィールを更新しました！");
+    } catch (err) {
+      console.error("プロフィール更新エラー", err);
+      alert("更新に失敗しました。もう一度お試しください。");
+    }
   };
 
   const handleLogout = async () => {
@@ -68,14 +86,26 @@ export default function SettingsPage() {
           onChange={handleImageChange}
           className="text-sm"
         />
-
-        <button
-          onClick={handleUpdate}
-          className="mt-2 px-6 py-2 bg-[#FF6B35] text-white rounded-xl"
-        >
-          プロフィール更新
-        </button>
       </div>
+
+      {/* 名前入力欄 */}
+      <div className="mb-6">
+        <input
+          type="text"
+          value={editedName}
+          onChange={(e) => setEditedName(e.target.value)}
+          placeholder="名前を入力"
+          className="w-full px-4 py-2 border rounded-xl text-center"
+        />
+      </div>
+
+      {/* 更新ボタン */}
+      <button
+        onClick={handleUpdate}
+        className="w-full py-2 bg-[#FF6B35] text-white rounded-xl"
+      >
+        プロフィールを更新
+      </button>
 
       {/* ログアウトリンク */}
       <div className="mt-8">
@@ -91,7 +121,7 @@ export default function SettingsPage() {
         </a>
       </div>
 
-      {/* モーダル */}
+      {/* ログアウトモーダル */}
       <Dialog open={isModalOpen} onClose={() => setIsModalOpen(false)} className="relative z-50">
         <div className="fixed inset-0 bg-black/30" aria-hidden="true" />
         <div className="fixed inset-0 flex items-center justify-center p-4">
