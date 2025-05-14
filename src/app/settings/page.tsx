@@ -1,13 +1,16 @@
+// src/app/settings/page.tsx
 "use client";
 
+import { useState } from "react";
+import { useRouter } from "next/navigation";
 import { useUser } from "@/contexts/UserContext";
 import { db } from "@/lib/firebase";
 import { doc, updateDoc } from "firebase/firestore";
-import { useState } from "react";
 import Image from "next/image";
 import { Dialog } from "@headlessui/react";
 
 export default function SettingsPage() {
+  const router = useRouter();
   const { user, setUser } = useUser()!;
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
   const [editedName, setEditedName] = useState(user?.name || "");
@@ -17,33 +20,26 @@ export default function SettingsPage() {
     const file = e.target.files?.[0];
     if (file) {
       const reader = new FileReader();
-      reader.onloadend = () => {
-        setSelectedImage(reader.result as string);
-      };
+      reader.onloadend = () => setSelectedImage(reader.result as string);
       reader.readAsDataURL(file);
     }
   };
 
   const handleUpdate = async () => {
-    if (!user || !user.uid) {
+    if (!user?.uid) {
       alert("ユーザー情報が見つかりません");
       return;
     }
-
     const updates: { name?: string; avatarUrl?: string } = {};
     if (editedName !== user.name) updates.name = editedName;
     if (selectedImage) updates.avatarUrl = selectedImage;
-
+    if (!Object.keys(updates).length) {
+      alert("変更がありません");
+      return;
+    }
     try {
-      const userRef = doc(db, "users", user.uid);
-      await updateDoc(userRef, updates);
-
-      setUser({
-        ...user,
-        name: editedName,
-        avatarUrl: selectedImage || user.avatarUrl,
-      });
-
+      await updateDoc(doc(db, "users", user.uid), updates);
+      setUser({ ...user, ...updates });
       alert("プロフィールを更新しました！");
     } catch (err) {
       console.error("プロフィール更新エラー", err);
@@ -55,7 +51,8 @@ export default function SettingsPage() {
     const { signOut } = await import("firebase/auth");
     const { auth } = await import("@/lib/firebase");
     await signOut(auth);
-    window.location.href = "/";
+    // ログアウト後は /login へ遷移
+    router.push("/login");
   };
 
   return (
@@ -67,7 +64,7 @@ export default function SettingsPage() {
         <div className="w-28 h-28 rounded-full overflow-hidden border-2 border-[#FF6B35]">
           {selectedImage || user?.avatarUrl ? (
             <Image
-              src={selectedImage || user?.avatarUrl || ""}
+              src={selectedImage || user.avatarUrl!}
               alt="avatar"
               width={112}
               height={112}
@@ -79,7 +76,6 @@ export default function SettingsPage() {
             </div>
           )}
         </div>
-
         <input
           type="file"
           accept="image/*"
@@ -102,27 +98,27 @@ export default function SettingsPage() {
       {/* 更新ボタン */}
       <button
         onClick={handleUpdate}
-        className="w-full py-2 bg-[#FF6B35] text-white rounded-xl"
+        className="w-full py-2 bg-[#FF6B35] text-white rounded-xl mb-6"
       >
         プロフィールを更新
       </button>
 
       {/* ログアウトリンク */}
-      <div className="mt-8">
-        <a
-          href="#"
-          onClick={(e) => {
-            e.preventDefault();
-            setIsModalOpen(true);
-          }}
-          className="text-[#FF6B35] underline text-base"
+      <div>
+        <button
+          onClick={() => setIsModalOpen(true)}
+          className="text-[#FF6B35] underline"
         >
           ログアウト
-        </a>
+        </button>
       </div>
 
       {/* ログアウトモーダル */}
-      <Dialog open={isModalOpen} onClose={() => setIsModalOpen(false)} className="relative z-50">
+      <Dialog
+        open={isModalOpen}
+        onClose={() => setIsModalOpen(false)}
+        className="relative z-50"
+      >
         <div className="fixed inset-0 bg-black/30" aria-hidden="true" />
         <div className="fixed inset-0 flex items-center justify-center p-4">
           <Dialog.Panel className="bg-white p-6 rounded-xl shadow-lg max-w-sm w-full text-center">

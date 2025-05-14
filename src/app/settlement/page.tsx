@@ -2,14 +2,14 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { collection, query, where, getDocs } from "firebase/firestore";
+import { collection, query, where, onSnapshot } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import { useUser } from "@/contexts/UserContext";
 import { Button } from "@/components/ui/button";
 
 interface ExpenseRaw {
   amount: number;
-  paidBy: string;   // UID
+  paidBy: string;   // UID of payer
   settled: boolean;
   pairId: string;
 }
@@ -30,60 +30,59 @@ export default function SettlementPage() {
   useEffect(() => {
     if (!user?.pairId) return;
 
-    const fetchData = async () => {
-      setLoading(true);
-
-      // 1) ペアのユーザー一覧取得 → UID→名前マップ
-      const usersSnap = await getDocs(
-        query(collection(db, "users"), where("pairId", "==", user.pairId))
-      );
-      const nameMap: Record<string, string> = {};
-      usersSnap.docs.forEach((d) => {
-        nameMap[d.id] = d.data().name;
+    setLoading(true);
+    // ユーザー一覧（名前マップ）を取得
+    const usersQ = query(
+      collection(db, "users"),
+      where("pairId", "==", user.pairId)
+    );
+    let nameMap: Record<string,string> = {};
+    const unsubUsers = onSnapshot(usersQ, snap => {
+      snap.docs.forEach(d => {
+        nameMap[d.id] = (d.data().name as string) || "不明";
       });
+    });
 
-      // 2) 未精算費用取得
-      const expSnap = await getDocs(
-        query(
-          collection(db, "expenses"),
-          where("pairId", "==", user.pairId),
-          where("settled", "==", false)
-        )
-      );
-      const raw = expSnap.docs.map((d) => d.data() as ExpenseRaw);
+    // 未精算費用のリアルタイム監視
+    const expQ = query(
+      collection(db, "expenses"),
+      where("pairId", "==", user.pairId),
+      where("settled", "==", false)
+    );
+    const unsubExp = onSnapshot(expQ, snap => {
+      const raw = snap.docs.map(d => d.data() as ExpenseRaw);
 
-      // 3) 支払者毎の合計
+      // 支払者ごとの合計
       const totals: Record<string, number> = {};
-      raw.forEach((e) => {
+      raw.forEach(e => {
         totals[e.paidBy] = (totals[e.paidBy] || 0) + e.amount;
       });
 
       const members = Object.keys(totals);
-      const sum = Object.values(totals).reduce((a, b) => a + b, 0);
+      const sum = Object.values(totals).reduce((a,b) => a+b, 0);
       const avg = sum / members.length;
 
-      // 4) 各メンバーの収支
+      // 収支計算
       const balance: Record<string, number> = {};
-      members.forEach((uid) => {
+      members.forEach(uid => {
         balance[uid] = Math.round(totals[uid] - avg);
       });
 
-      // 5) 貪欲法で精算ペアを決定
-      const payers = members.filter((uid) => balance[uid] < 0);
-      const receivers = members.filter((uid) => balance[uid] > 0);
+      // 貪欲法で精算ペア算出
+      const payers = members.filter(uid => balance[uid] < 0);
+      const receivers = members.filter(uid => balance[uid] > 0);
       const result: Settlement[] = [];
-      let i = 0, j = 0;
-      while (i < payers.length && j < receivers.length) {
-        const p = payers[i];
-        const r = receivers[j];
+      let i=0, j=0;
+      while(i < payers.length && j < receivers.length) {
+        const p = payers[i], r = receivers[j];
         const amt = Math.min(-balance[p], balance[r]);
         if (amt > 0) {
           result.push({
-            fromUid: p,
-            toUid: r,
-            fromName: nameMap[p] || "不明",
-            toName: nameMap[r] || "不明",
-            amount: amt,
+            fromUid:  p,
+            toUid:    r,
+            fromName: nameMap[p],
+            toName:   nameMap[r],
+            amount:   amt,
           });
           balance[p] += amt;
           balance[r] -= amt;
@@ -94,9 +93,12 @@ export default function SettlementPage() {
 
       setSettlements(result);
       setLoading(false);
-    };
+    });
 
-    fetchData();
+    return () => {
+      unsubUsers();
+      unsubExp();
+    };
   }, [user]);
 
   if (!user) {
@@ -108,7 +110,7 @@ export default function SettlementPage() {
   }
 
   return (
-    <main className="min-h-screen flex flex-col items-center bg-white px-6 py-10">
+    <main className="min-h-screen bg-[#FAFAF8] px-6 py-10 flex flex-col items-center">
       <h1 className="text-2xl font-bold text-[#FF6B35] mb-6">清算の状況</h1>
 
       {loading ? (
@@ -122,27 +124,35 @@ export default function SettlementPage() {
             return (
               <div
                 key={idx}
-                className="bg-white p-4 rounded-xl shadow-sm"
+                className="bg-white p-4 rounded-xl shadow flex flex-col gap-4"
               >
-                {/* 誰が誰にいくら */}
-                <p className="text-sm text-gray-700 mb-2">
-                  {s.fromName} が {s.toName} に支払う金額
-                </p>
-
-                {/* 金額 */}
-                <p className="text-3xl font-bold text-[#FF6B35] mb-4">
-                  ¥{s.amount.toLocaleString()}
-                </p>
+                {/* 自分視点のメッセージ */}
+                {isPayer ? (
+                  <p className="text-lg font-semibold text-gray-800">
+                    あなたは <span className="text-[#FF6B35]">{s.toName}</span> さんに
+                    <span className="ml-1 text-2xl font-bold text-[#FF6B35]">
+                      ¥{s.amount.toLocaleString()}
+                    </span>
+                    を送るべきです
+                  </p>
+                ) : (
+                  <p className="text-lg font-semibold text-gray-800">
+                    <span className="text-[#FF6B35]">{s.fromName}</span> さんが
+                    あなたに
+                    <span className="ml-1 text-2xl font-bold text-[#FF6B35]">
+                      ¥{s.amount.toLocaleString()}
+                    </span>
+                    を送るべきです
+                  </p>
+                )}
 
                 {/* アクションボタン */}
                 {isPayer ? (
-                  <Button className="w-full bg-[#FF6B35] hover:bg-[#e85d2d] text-white rounded-xl">
-                    PayPayで支払う
+                  <Button className="w-full bg-[#ED1C24] hover:bg-[#c1121f] text-white rounded-xl">
+                    PayPayを起動
                   </Button>
                 ) : (
-                  <Button
-                    className="w-full bg-[#00C300] hover:bg-green-600 text-white rounded-xl"
-                  >
+                  <Button className="w-full bg-[#00C300] hover:bg-green-600 text-white rounded-xl">
                     LINEで送金リンクを送る
                   </Button>
                 )}

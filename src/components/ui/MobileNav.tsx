@@ -6,11 +6,11 @@ import { Home, List, PlusCircle, CreditCard, Settings } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const navItems = [
-  { label: "ホーム", icon: Home, href: "/home" },
-  { label: "一覧", icon: List, href: "/expense/list" },
-  { label: "追加", icon: PlusCircle, href: "/expense/new" },
-  { label: "精算", icon: CreditCard, href: "/settlement" },
-  { label: "設定", icon: Settings, href: "/settings" },
+  { label: "ホーム",    icon: Home,       href: "/home" },
+  { label: "一覧",      icon: List,       href: "/expense/list" },
+  { label: "追加",      icon: PlusCircle, href: "/expense/new" },
+  { label: "精算",      icon: CreditCard, href: "/settlement" },
+  { label: "設定",      icon: Settings,   href: "/settings" },
 ];
 
 export default function MobileNav() {
@@ -27,8 +27,13 @@ export default function MobileNav() {
             key={href}
             onClick={() => router.push(href)}
             className={cn(
-              "flex flex-col items-center text-xs transition-all",
-              isActive && "scale-110"
+              "flex flex-col items-center justify-center text-xs w-full h-full transition-all relative",
+              // アクティブ時の強調スタイル
+              isActive && [
+                "scale-110",
+                "bg-white/20",
+                "border-t-2 border-white",
+              ]
             )}
           >
             <Icon

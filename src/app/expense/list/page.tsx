@@ -2,6 +2,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import { useUser } from "@/contexts/UserContext";
 import { db } from "@/lib/firebase";
 import {
@@ -27,6 +28,7 @@ type Expense = {
 };
 
 export default function ExpenseListPage() {
+  const router = useRouter();
   const { user } = useUser() || {};
   const [expenses, setExpenses] = useState<Expense[]>([]);
   const [loading, setLoading] = useState(true);
@@ -116,20 +118,31 @@ export default function ExpenseListPage() {
   if (!user) {
     return (
       <main className="min-h-screen flex items-center justify-center bg-white">
-        <p className="text-gray-500 text-sm">ログイン情報を確認しています...</p>
+        <p className="text-gray-500 text-sm">
+          ログイン情報を確認しています...
+        </p>
       </main>
     );
   }
 
   return (
     <main className="min-h-screen px-6 py-10 bg-[#FAFAF8]">
-      <h1 className="text-xl font-bold text-[#FF6B35] mb-6">費用一覧</h1>
+      {/* タイトル＋追加ボタン */}
+      <div className="flex justify-between items-center mb-6">
+        <h1 className="text-xl font-bold text-[#FF6B35]">費用一覧</h1>
+        <Button
+          className="text-sm bg-[#FF6B35] hover:bg-[#e85d2d] text-white rounded-xl px-4 py-2"
+          onClick={() => router.push("/expense/new")}
+        >
+          新しく費用を追加
+        </Button>
+      </div>
 
       {/* フィルター */}
       <div className="mb-6 flex flex-col sm:flex-row gap-4 items-start sm:items-center">
         <div>
-          <label className="text-sm text-gray-700 block mb-1">月で絞り込み</label>
-          <input
+          <Label>月で絞り込み</Label>
+          <Input
             type="month"
             value={monthFilter}
             onChange={(e) => setMonthFilter(e.target.value)}
@@ -137,7 +150,7 @@ export default function ExpenseListPage() {
           />
         </div>
         <div>
-          <label className="text-sm text-gray-700 block mb-1">精算ステータス</label>
+          <Label>精算ステータス</Label>
           <select
             className="border rounded-md px-3 py-1 text-sm"
             value={statusFilter}
@@ -154,11 +167,12 @@ export default function ExpenseListPage() {
       {loading ? (
         <p className="text-sm text-gray-500">読み込み中...</p>
       ) : expenses.length === 0 ? (
-        <p className="text-sm text-gray-500">この条件に合う費用がありません</p>
+        <p className="text-sm text-gray-500">
+          この条件に合う費用がありません
+        </p>
       ) : (
         <ul className="space-y-3">
           {expenses.map((exp) => {
-            // カテゴリースタイル取得（デフォルトも設定）
             const style = categoryStyles[exp.category] || {
               bg: "bg-gray-50",
               text: "text-gray-600",
@@ -168,7 +182,7 @@ export default function ExpenseListPage() {
                 key={exp.id}
                 className="bg-white p-4 rounded-xl shadow-sm border relative"
               >
-                {/* カテゴリーラベル（色分け） */}
+                {/* カテゴリーラベル */}
                 <div
                   className={`inline-block px-2 py-1 rounded-md text-xs font-semibold ${style.text} ${style.bg} mb-2`}
                 >

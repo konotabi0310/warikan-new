@@ -1,3 +1,4 @@
+// src/app/login/page.tsx
 "use client";
 
 import { useState } from "react";
@@ -52,16 +53,16 @@ export default function LoginPage() {
 
       // Contextにログイン情報をセット
       setUser({
-        id: doc.id,
-        name: userData.name,
+        uid:      doc.id,
+        name:     userData.name,
         username: userData.username,
-        email: userData.email,
-        pairId: userData.pairId,
+        email:    userData.email,
+        pairId:   userData.pairId,
+        avatarUrl:userData.avatarUrl, // もしあれば
       });
 
       // ホームに遷移
-     // 精算画面に遷移
-router.push("/settlement");
+      router.push("/home");
     } catch (err) {
       console.error("ログイン失敗:", err);
       setError("ログイン中にエラーが発生しました");
