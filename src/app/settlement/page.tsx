@@ -20,71 +20,66 @@ interface Settlement {
 }
 
 export default function SettlementPage() {
-  const userContext = useUser(); // null 対策
+  const userContext = useUser();
   const user = userContext?.user;
   const [settlements, setSettlements] = useState<Settlement[]>([]);
   const [loading, setLoading] = useState(true);
 
-  // 🔒 ユーザー情報が未取得なら一時表示
-  if (!user?.name || !user?.pairId) {
-    return (
-      <main className="min-h-screen flex items-center justify-center bg-white">
-        <p className="text-gray-500 text-sm">ユーザー情報を読み込んでいます...</p>
-      </main>
-    );
-  }
-
-  // 🔄 Firestoreから未精算データを取得して精算ロジックを実行
   useEffect(() => {
+    if (!user?.name || !user?.pairId) return;
+
     const fetchData = async () => {
       setLoading(true);
 
-      const q = query(
-        collection(db, "expenses"),
-        where("pairId", "==", user.pairId),
-        where("settled", "==", false)
-      );
-      const snapshot = await getDocs(q);
-      const data: Expense[] = snapshot.docs.map((doc) => doc.data() as Expense);
+      try {
+        const q = query(
+          collection(db, "expenses"),
+          where("pairId", "==", user.pairId),
+          where("settled", "==", false)
+        );
+        const snapshot = await getDocs(q);
+        const data: Expense[] = snapshot.docs.map((doc) => doc.data() as Expense);
 
-      // 支払者ごとの合計金額を計算
-      const totals: Record<string, number> = {};
-      data.forEach((e) => {
-        totals[e.paidBy] = (totals[e.paidBy] || 0) + e.amount;
-      });
+        const totals: Record<string, number> = {};
+        data.forEach((e) => {
+          totals[e.paidBy] = (totals[e.paidBy] || 0) + e.amount;
+        });
 
-      const members = Object.keys(totals);
-      const totalAmount = Object.values(totals).reduce((a, b) => a + b, 0);
-      const avg = totalAmount / members.length;
+        const members = Object.keys(totals);
+        const totalAmount = Object.values(totals).reduce((a, b) => a + b, 0);
+        const avg = totalAmount / members.length;
 
-      const balance: Record<string, number> = {};
-      members.forEach((name) => {
-        balance[name] = Math.round(totals[name] - avg);
-      });
+        const balance: Record<string, number> = {};
+        members.forEach((name) => {
+          balance[name] = Math.round(totals[name] - avg);
+        });
 
-      // 精算ロジック（貪欲法）
-      const payers = members.filter((n) => balance[n] < 0);
-      const receivers = members.filter((n) => balance[n] > 0);
-      const result: Settlement[] = [];
+        const payers = members.filter((n) => balance[n] < 0);
+        const receivers = members.filter((n) => balance[n] > 0);
+        const result: Settlement[] = [];
 
-      let i = 0, j = 0;
-      while (i < payers.length && j < receivers.length) {
-        const payer = payers[i];
-        const receiver = receivers[j];
-        const payAmount = Math.min(-balance[payer], balance[receiver]);
+        let i = 0, j = 0;
+        while (i < payers.length && j < receivers.length) {
+          const payer = payers[i];
+          const receiver = receivers[j];
+          const payAmount = Math.min(-balance[payer], balance[receiver]);
 
-        if (payAmount > 0) {
-          result.push({ from: payer, to: receiver, amount: payAmount });
-          balance[payer] += payAmount;
-          balance[receiver] -= payAmount;
+          if (payAmount > 0) {
+            result.push({ from: payer, to: receiver, amount: payAmount });
+            balance[payer] += payAmount;
+            balance[receiver] -= payAmount;
+          }
+
+          if (balance[payer] === 0) i++;
+          if (balance[receiver] === 0) j++;
         }
 
-        if (balance[payer] === 0) i++;
-        if (balance[receiver] === 0) j++;
+        setSettlements(result);
+      } catch (err) {
+        console.error("清算データ取得エラー", err);
+      } finally {
+        setLoading(false);
       }
-
-      setSettlements(result);
-      setLoading(false);
     };
 
     fetchData();
@@ -96,7 +91,9 @@ export default function SettlementPage() {
         清算の状況
       </h1>
 
-      {loading ? (
+      {!user?.name || !user?.pairId ? (
+        <p className="text-center text-sm text-gray-500">ユーザー情報を読み込んでいます...</p>
+      ) : loading ? (
         <p className="text-center text-sm text-gray-500">読み込み中...</p>
       ) : settlements.length === 0 ? (
         <p className="text-center text-sm text-gray-500 mt-10">
@@ -125,7 +122,6 @@ export default function SettlementPage() {
                   </div>
                 </div>
 
-                {/* 支払 or 受取ボタン */}
                 {isPayer ? (
                   <Button className="bg-[#FF6B35] hover:bg-[#e85d2d] w-full rounded-xl text-white">
                     PayPayで支払う
