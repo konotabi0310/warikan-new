@@ -18,7 +18,7 @@ type Expense = {
   amount: number;
   category: string;
   date: string;
-  paidBy: string;
+  paidBy: string; // UID
   settled: boolean;
 };
 
@@ -30,24 +30,25 @@ export default function ExpenseListPage() {
     new Date().toISOString().slice(0, 7)
   );
   const [statusFilter, setStatusFilter] = useState<"all" | "settled" | "unsettled">("all");
+  const [paidByMap, setPaidByMap] = useState<Record<string, string>>({});
 
   useEffect(() => {
-    if (!user) return;
+    if (!user?.pairId) return;
 
-    const fetchExpenses = async () => {
+    const fetchData = async () => {
       setLoading(true);
       try {
-        const q = query(
+        // 支払データ取得
+        const expenseQuery = query(
           collection(db, "expenses"),
-          where("payId", "==", user.pairId),
+          where("pairId", "==", user.pairId),
           orderBy("date", "desc")
         );
-        const snapshot = await getDocs(q);
-        const list = snapshot.docs
-          .map((doc) => ({
-            id: doc.id,
-            ...doc.data(),
-          })) as Expense[];
+        const expenseSnap = await getDocs(expenseQuery);
+        const list = expenseSnap.docs.map((doc) => ({
+          id: doc.id,
+          ...doc.data(),
+        })) as Expense[];
 
         // 月で絞り込み
         const filteredByMonth = list.filter((exp) =>
@@ -62,6 +63,18 @@ export default function ExpenseListPage() {
         });
 
         setExpenses(filtered);
+
+        // 支払者UID → 名前マップ作成
+        const usersQuery = query(
+          collection(db, "users"),
+          where("pairId", "==", user.pairId)
+        );
+        const usersSnap = await getDocs(usersQuery);
+        const map: Record<string, string> = {};
+        usersSnap.docs.forEach((doc) => {
+          map[doc.id] = doc.data().name;
+        });
+        setPaidByMap(map);
       } catch (err) {
         console.error("費用の取得に失敗しました", err);
       } finally {
@@ -69,7 +82,7 @@ export default function ExpenseListPage() {
       }
     };
 
-    fetchExpenses();
+    fetchData();
   }, [user, monthFilter, statusFilter]);
 
   const handleStatusChange = async (id: string, newStatus: boolean) => {
@@ -149,7 +162,7 @@ export default function ExpenseListPage() {
 
               {/* 補足情報 */}
               <div className="text-xs text-gray-500 mt-1">
-                {exp.date} / 支払者: {exp.paidBy}
+                {exp.date} / 支払者: {paidByMap[exp.paidBy] || "不明"}
               </div>
 
               {/* 現在のステータス */}

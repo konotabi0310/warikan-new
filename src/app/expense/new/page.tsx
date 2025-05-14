@@ -34,19 +34,22 @@ export default function ExpenseNewPage() {
   const [note, setNote] = useState("");
   const [date, setDate] = useState(format(new Date(), "yyyy-MM-dd"));
   const [paidBy, setPaidBy] = useState("");
-  const [memberNames, setMemberNames] = useState<string[]>([]);
+  const [members, setMembers] = useState<
+    { uid: string; name: string }[]
+  >([]);
   const [loading, setLoading] = useState(false);
 
+  // ✅ ペアIDからメンバー(uid, name)一覧を取得
   useEffect(() => {
     if (!user?.pairId) return;
     const fetchUsers = async () => {
-      const q = query(
-        collection(db, "users"),
-        where("pairId", "==", user.pairId)
-      );
+      const q = query(collection(db, "users"), where("pairId", "==", user.pairId));
       const snap = await getDocs(q);
-      const names = snap.docs.map((doc) => doc.data().name as string);
-      setMemberNames(names);
+      const memberList = snap.docs.map((doc) => ({
+        uid: doc.id,
+        name: doc.data().name,
+      }));
+      setMembers(memberList);
     };
     fetchUsers();
   }, [user]);
@@ -64,9 +67,9 @@ export default function ExpenseNewPage() {
         category,
         note,
         date,
-        paidBy,
-        payId: user.pairId,
-        settled: false, // ←ここが今回追加！
+        paidBy, // ← uidで保存
+        pairId: user.pairId,
+        settled: false,
         createdAt: serverTimestamp(),
       });
       router.push("/expense/list");
@@ -83,6 +86,7 @@ export default function ExpenseNewPage() {
       <div className="w-full max-w-md space-y-6">
         <h1 className="text-2xl font-bold text-[#FF6B35] text-center">費用登録</h1>
 
+        {/* 金額 */}
         <div className="space-y-2">
           <Label>金額 (¥)</Label>
           <Input
@@ -93,6 +97,7 @@ export default function ExpenseNewPage() {
           />
         </div>
 
+        {/* 日付 */}
         <div className="space-y-2">
           <Label>日付</Label>
           <Input
@@ -103,6 +108,7 @@ export default function ExpenseNewPage() {
           />
         </div>
 
+        {/* カテゴリ */}
         <div className="space-y-2">
           <Label>カテゴリ</Label>
           <Select value={category} onValueChange={setCategory}>
@@ -118,6 +124,7 @@ export default function ExpenseNewPage() {
           </Select>
         </div>
 
+        {/* 支払った人（UID） */}
         <div className="space-y-2">
           <Label>支払った人</Label>
           <Select value={paidBy} onValueChange={setPaidBy}>
@@ -125,15 +132,16 @@ export default function ExpenseNewPage() {
               <SelectValue placeholder="選択してください" />
             </SelectTrigger>
             <SelectContent>
-              {memberNames.map((name) => (
-                <SelectItem key={name} value={name}>
-                  {name}
+              {members.map((member) => (
+                <SelectItem key={member.uid} value={member.uid}>
+                  {member.name}
                 </SelectItem>
               ))}
             </SelectContent>
           </Select>
         </div>
 
+        {/* メモ */}
         <div className="space-y-2">
           <Label>メモ（任意）</Label>
           <Input
@@ -143,6 +151,7 @@ export default function ExpenseNewPage() {
           />
         </div>
 
+        {/* 登録ボタン */}
         <Button
           disabled={loading}
           onClick={handleSubmit}
