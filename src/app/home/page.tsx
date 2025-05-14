@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation";
 import Image from "next/image";
 import { useUser } from "@/contexts/UserContext";
 import { db } from "@/lib/firebase";
-import { collection, query, where, getDocs, orderBy } from "firebase/firestore";
+import { collection, query, where, getDocs } from "firebase/firestore";
 import { Button } from "@/components/ui/button";
 import { format, parseISO } from "date-fns";
 
@@ -15,40 +15,37 @@ export default function HomePage() {
   const { user } = useUser() || {};
   const [earliestUnsettled, setEarliestUnsettled] = useState<string | null>(null);
 
-  // 未ログインならログイン画面へ
+  // 未ログインなら /login へ
   useEffect(() => {
-    if (!user) {
-      router.push("/login");
-    }
+    if (!user) router.push("/login");
   }, [user, router]);
 
-  // 未精算の費用から最も古い日付を取得
+  // 未精算の費用から最古日を算出
   useEffect(() => {
     if (!user?.pairId) return;
 
     const fetchEarliest = async () => {
       const q = query(
         collection(db, "expenses"),
-        where("payId", "==", user.pairId),
-        where("settled", "==", false),
-        orderBy("date", "asc"),
-        // Firestore のクエリでは orderBy だけだと複合インデックスが要る場合があるので、
-        // 必要に応じてインデックスを作成してください。
+        where("pairId", "==", user.pairId),
+        where("settled", "==", false)
       );
       const snap = await getDocs(q);
-      if (!snap.empty) {
-        const first = snap.docs[0].data().date as string;
-        setEarliestUnsettled(first);
+      if (snap.empty) {
+        setEarliestUnsettled(null);
+        return;
       }
+      const dates = snap.docs.map(d => d.data().date as string);
+      const minDate = dates.reduce((a, b) => (a < b ? a : b));
+      setEarliestUnsettled(minDate);
     };
-
     fetchEarliest();
   }, [user]);
 
   if (!user) {
     return (
       <main className="min-h-screen flex items-center justify-center bg-white">
-        <p className="text-sm text-gray-500">ログイン情報を確認中です...</p>
+        <p className="text-sm text-gray-500">ログイン情報を確認中です…</p>
       </main>
     );
   }
@@ -72,7 +69,9 @@ export default function HomePage() {
             <span className="text-gray-500">?</span>
           </div>
         )}
-        <h1 className="text-2xl font-bold text-[#FF6B35]">{user.name}さん、こんにちは！</h1>
+        <h1 className="text-2xl font-bold text-[#FF6B35]">
+          {user.name}さん、こんにちは！
+        </h1>
       </div>
 
       {/* ペアコード表示 */}
@@ -80,11 +79,16 @@ export default function HomePage() {
         ペアコード：<span className="font-mono">{user.pairId}</span>
       </p>
 
-      {/* 未精算開始日 */}
+      {/* 未精算開始日カード */}
       {earliestUnsettled && (
-        <p className="text-sm text-red-600 mb-6">
-          {format(parseISO(earliestUnsettled), "M月d日")}から費用が精算されていません
-        </p>
+        <div className="w-full max-w-sm bg-white rounded-xl shadow-md p-6 mb-6 text-center">
+          <p className="text-3xl font-extrabold text-[#FF6B35]">
+            {format(parseISO(earliestUnsettled), "M月d日")}
+          </p>
+          <p className="mt-2 text-lg font-semibold text-gray-800">
+            から費用が精算されていません
+          </p>
+        </div>
       )}
 
       {/* ボタン横並び */}
