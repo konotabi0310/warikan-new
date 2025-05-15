@@ -31,58 +31,61 @@ export default function SettlementPage() {
     if (!user?.pairId) return;
 
     setLoading(true);
-    // ユーザー一覧（名前マップ）を取得
+
+    // 1) ユーザー一覧をリアルタイム取得して名前マップを作成
     const usersQ = query(
       collection(db, "users"),
       where("pairId", "==", user.pairId)
     );
-    let nameMap: Record<string,string> = {};
-    const unsubUsers = onSnapshot(usersQ, snap => {
-      snap.docs.forEach(d => {
-        nameMap[d.id] = (d.data().name as string) || "不明";
+    let nameMap: Record<string, string> = {};
+    const unsubUsers = onSnapshot(usersQ, (snap) => {
+      snap.docs.forEach((d) => {
+        nameMap[d.id] = d.data().name as string;
       });
     });
 
-    // 未精算費用のリアルタイム監視
+    // 2) 未精算の expenses をリアルタイムで監視
     const expQ = query(
       collection(db, "expenses"),
       where("pairId", "==", user.pairId),
       where("settled", "==", false)
     );
-    const unsubExp = onSnapshot(expQ, snap => {
-      const raw = snap.docs.map(d => d.data() as ExpenseRaw);
+    const unsubExp = onSnapshot(expQ, (snap) => {
+      const raw = snap.docs.map((d) => d.data() as ExpenseRaw);
 
       // 支払者ごとの合計
       const totals: Record<string, number> = {};
-      raw.forEach(e => {
+      raw.forEach((e) => {
         totals[e.paidBy] = (totals[e.paidBy] || 0) + e.amount;
       });
 
       const members = Object.keys(totals);
-      const sum = Object.values(totals).reduce((a,b) => a+b, 0);
+      const sum = Object.values(totals).reduce((a, b) => a + b, 0);
       const avg = sum / members.length;
 
-      // 収支計算
+      // 各自の収支
       const balance: Record<string, number> = {};
-      members.forEach(uid => {
+      members.forEach((uid) => {
         balance[uid] = Math.round(totals[uid] - avg);
       });
 
-      // 貪欲法で精算ペア算出
-      const payers = members.filter(uid => balance[uid] < 0);
-      const receivers = members.filter(uid => balance[uid] > 0);
+      // 貪欲法で「誰が誰にいくら払うか」を決定
+      const payers = members.filter((uid) => balance[uid] < 0);
+      const receivers = members.filter((uid) => balance[uid] > 0);
       const result: Settlement[] = [];
-      let i=0, j=0;
-      while(i < payers.length && j < receivers.length) {
-        const p = payers[i], r = receivers[j];
+      let i = 0,
+        j = 0;
+      while (i < payers.length && j < receivers.length) {
+        const p = payers[i],
+          r = receivers[j];
         const amt = Math.min(-balance[p], balance[r]);
         if (amt > 0) {
           result.push({
-            fromUid:  p,
-            toUid:    r,
-            fromName: nameMap[p],
-            toName:   nameMap[r],
-            amount:   amt,
+            fromUid: p,
+            toUid: r,
+            fromName: nameMap[p] || "不明",
+            toName: nameMap[r] || "不明",
+            amount: amt,
           });
           balance[p] += amt;
           balance[r] -= amt;
@@ -121,41 +124,47 @@ export default function SettlementPage() {
         <div className="w-full max-w-md space-y-4">
           {settlements.map((s, idx) => {
             const isPayer = s.fromUid === user.uid;
-            return (
-              <div
-                key={idx}
-                className="bg-white p-4 rounded-xl shadow flex flex-col gap-4"
-              >
-                {/* 自分視点のメッセージ */}
-                {isPayer ? (
-                  <p className="text-lg font-semibold text-gray-800">
-                    あなたは <span className="text-[#FF6B35]">{s.toName}</span> さんに
-                    <span className="ml-1 text-2xl font-bold text-[#FF6B35]">
-                      ¥{s.amount.toLocaleString()}
-                    </span>
-                    を送るべきです
-                  </p>
-                ) : (
-                  <p className="text-lg font-semibold text-gray-800">
-                    <span className="text-[#FF6B35]">{s.fromName}</span> さんが
-                    あなたに
-                    <span className="ml-1 text-2xl font-bold text-[#FF6B35]">
-                      ¥{s.amount.toLocaleString()}
-                    </span>
-                    を送るべきです
-                  </p>
-                )}
 
-                {/* アクションボタン */}
-                {isPayer ? (
-                  <Button className="w-full bg-[#ED1C24] hover:bg-[#c1121f] text-white rounded-xl">
-                    PayPayを起動
-                  </Button>
-                ) : (
-                  <Button className="w-full bg-[#00C300] hover:bg-green-600 text-white rounded-xl">
-                    LINEで送金リンクを送る
-                  </Button>
-                )}
+            // 共有メッセージを準備
+            const text = isPayer
+              ? `${s.fromName}さんは ${s.toName}さんに¥${s.amount.toLocaleString()}を送金してください。`
+              : `${s.toName}さんは ${s.fromName}さんから¥${s.amount.toLocaleString()}を受け取ってください。`;
+
+            // LINE 共有用 URL
+            const lineShareUrl = `https://line.me/R/msg/text/?${encodeURIComponent(
+              text
+            )}`;
+
+            // PayPay 起動用 Deep Link (サンプル)
+            const paypayLink = `paypay://send?amount=${s.amount}`;
+
+            return (
+              <div key={idx} className="bg-white p-4 rounded-xl shadow-sm">
+                <p className="text-lg text-gray-800 mb-2">{text}</p>
+
+                <div className="flex gap-3">
+                  {isPayer ? (
+                    <Button
+                      className="flex-1 bg-[#ED1C24] hover:bg-[#c1121f] text-white rounded-xl"
+                      onClick={() => {
+                        // PayPay アプリへ遷移
+                        window.location.href = paypayLink;
+                      }}
+                    >
+                      PayPay 起動
+                    </Button>
+                  ) : (
+                    <Button
+                      className="flex-1 bg-[#00C300] hover:bg-green-600 text-white rounded-xl"
+                      onClick={() => {
+                        // LINE シェアシートを呼び出し
+                        window.open(lineShareUrl, "_blank");
+                      }}
+                    >
+                      LINE 送金リンク
+                    </Button>
+                  )}
+                </div>
               </div>
             );
           })}

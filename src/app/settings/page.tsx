@@ -11,32 +11,39 @@ import { Dialog } from "@headlessui/react";
 
 export default function SettingsPage() {
   const router = useRouter();
-  const { user, setUser } = useUser()!;
+  const { user, setUser } = useUser();
+
+  // user がまだ読み込まれていない or 未ログインならローディング表示
+  if (!user) {
+    return (
+      <main className="min-h-screen flex items-center justify-center bg-white">
+        <p className="text-gray-500">ユーザー情報を読み込んでいます…</p>
+      </main>
+    );
+  }
+
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
-  const [editedName, setEditedName] = useState(user?.name || "");
+  const [editedName, setEditedName] = useState(user.name);
   const [isModalOpen, setIsModalOpen] = useState(false);
 
   const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (file) {
-      const reader = new FileReader();
-      reader.onloadend = () => setSelectedImage(reader.result as string);
-      reader.readAsDataURL(file);
-    }
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onloadend = () => setSelectedImage(reader.result as string);
+    reader.readAsDataURL(file);
   };
 
   const handleUpdate = async () => {
-    if (!user?.uid) {
-      alert("ユーザー情報が見つかりません");
-      return;
-    }
-    const updates: { name?: string; avatarUrl?: string } = {};
+    const updates: Partial<{ name: string; avatarUrl: string }> = {};
     if (editedName !== user.name) updates.name = editedName;
     if (selectedImage) updates.avatarUrl = selectedImage;
-    if (!Object.keys(updates).length) {
+
+    if (Object.keys(updates).length === 0) {
       alert("変更がありません");
       return;
     }
+
     try {
       await updateDoc(doc(db, "users", user.uid), updates);
       setUser({ ...user, ...updates });
@@ -51,9 +58,11 @@ export default function SettingsPage() {
     const { signOut } = await import("firebase/auth");
     const { auth } = await import("@/lib/firebase");
     await signOut(auth);
-    // ログアウト後は /login へ遷移
     router.push("/login");
   };
+
+  // ここまでで user が必ずいる
+  const displayUrl = selectedImage ?? user.avatarUrl;
 
   return (
     <div className="p-6 max-w-md mx-auto text-center">
@@ -62,9 +71,9 @@ export default function SettingsPage() {
       {/* プロフィール画像 */}
       <div className="flex flex-col items-center gap-3 mb-6">
         <div className="w-28 h-28 rounded-full overflow-hidden border-2 border-[#FF6B35]">
-          {selectedImage || user?.avatarUrl ? (
+          {displayUrl ? (
             <Image
-              src={selectedImage || user.avatarUrl!}
+              src={displayUrl}
               alt="avatar"
               width={112}
               height={112}
@@ -104,14 +113,12 @@ export default function SettingsPage() {
       </button>
 
       {/* ログアウトリンク */}
-      <div>
-        <button
-          onClick={() => setIsModalOpen(true)}
-          className="text-[#FF6B35] underline"
-        >
-          ログアウト
-        </button>
-      </div>
+      <button
+        onClick={() => setIsModalOpen(true)}
+        className="text-[#FF6B35] underline"
+      >
+        ログアウト
+      </button>
 
       {/* ログアウトモーダル */}
       <Dialog

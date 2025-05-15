@@ -12,44 +12,49 @@ import { format, parseISO } from "date-fns";
 
 export default function HomePage() {
   const router = useRouter();
-  const { user } = useUser() || {};
+  // 🔥 loading も受け取る
+  const { user, loading } = useUser();
   const [earliestUnsettled, setEarliestUnsettled] = useState<string | null>(null);
 
-  // 未ログインなら /login へ
+  // 認証読み込み完了後に未ログインなら /login へ
   useEffect(() => {
-    if (!user) router.push("/login");
-  }, [user, router]);
+    if (!loading && !user) {
+      router.push("/login");
+    }
+  }, [loading, user, router]);
 
   // 未精算の費用から最古日を算出
   useEffect(() => {
     if (!user?.pairId) return;
 
-    const fetchEarliest = async () => {
-      const q = query(
-        collection(db, "expenses"),
-        where("pairId", "==", user.pairId),
-        where("settled", "==", false)
+    (async () => {
+      const snap = await getDocs(
+        query(
+          collection(db, "expenses"),
+          where("pairId", "==", user.pairId),
+          where("settled", "==", false)
+        )
       );
-      const snap = await getDocs(q);
       if (snap.empty) {
         setEarliestUnsettled(null);
-        return;
+      } else {
+        const dates = snap.docs.map(d => d.data().date as string);
+        // 最も古い文字列を取る
+        setEarliestUnsettled(dates.sort()[0]);
       }
-      const dates = snap.docs.map(d => d.data().date as string);
-      const minDate = dates.reduce((a, b) => (a < b ? a : b));
-      setEarliestUnsettled(minDate);
-    };
-    fetchEarliest();
+    })();
   }, [user]);
 
-  if (!user) {
+  // 🔥 読み込み中 or user がまだ決まらない間は「確認中…」を表示
+  if (loading || !user) {
     return (
       <main className="min-h-screen flex items-center justify-center bg-white">
-        <p className="text-sm text-gray-500">ログイン情報を確認中です…</p>
+        <p className="text-gray-500">ログイン情報を確認中…</p>
       </main>
     );
   }
 
+  // ここから user が確実に存在するホーム画面
   return (
     <main className="min-h-screen bg-[#FAFAF8] px-6 py-10 flex flex-col items-center">
       {/* ヘッダー */}
