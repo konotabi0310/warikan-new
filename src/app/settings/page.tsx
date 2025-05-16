@@ -8,12 +8,17 @@ import { db } from "@/lib/firebase";
 import { doc, updateDoc } from "firebase/firestore";
 import Image from "next/image";
 import { Dialog } from "@headlessui/react";
+import { Button } from "@/components/ui/button";
 
 export default function SettingsPage() {
+  // 1) フックは必ずコンポーネントの先頭で呼び出す
   const router = useRouter();
-  const { user, setUser } = useUser();
+  const { user, setUser } = useUser();    // useUser は常に最初
+  const [selectedImage, setSelectedImage] = useState<string | null>(null);
+  const [editedName, setEditedName] = useState(user ? user.name : "");
+  const [isModalOpen, setIsModalOpen] = useState(false);
 
-  // user がまだ読み込まれていない or 未ログインならローディング表示
+  // 2) user がまだロードされていない or null の場合のガード表示
   if (!user) {
     return (
       <main className="min-h-screen flex items-center justify-center bg-white">
@@ -22,23 +27,21 @@ export default function SettingsPage() {
     );
   }
 
-  const [selectedImage, setSelectedImage] = useState<string | null>(null);
-  const [editedName, setEditedName] = useState(user.name);
-  const [isModalOpen, setIsModalOpen] = useState(false);
-
+  // 3) 画像選択ハンドラ
   const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onloadend = () => setSelectedImage(reader.result as string);
-    reader.readAsDataURL(file);
+    if (file) {
+      const reader = new FileReader();
+      reader.onloadend = () => setSelectedImage(reader.result as string);
+      reader.readAsDataURL(file);
+    }
   };
 
+  // 4) 更新ボタンハンドラ
   const handleUpdate = async () => {
-    const updates: Partial<{ name: string; avatarUrl: string }> = {};
+    const updates: { name?: string; avatarUrl?: string } = {};
     if (editedName !== user.name) updates.name = editedName;
     if (selectedImage) updates.avatarUrl = selectedImage;
-
     if (Object.keys(updates).length === 0) {
       alert("変更がありません");
       return;
@@ -54,15 +57,13 @@ export default function SettingsPage() {
     }
   };
 
+  // 5) ログアウトハンドラ
   const handleLogout = async () => {
     const { signOut } = await import("firebase/auth");
     const { auth } = await import("@/lib/firebase");
     await signOut(auth);
     router.push("/login");
   };
-
-  // ここまでで user が必ずいる
-  const displayUrl = selectedImage ?? user.avatarUrl;
 
   return (
     <div className="p-6 max-w-md mx-auto text-center">
@@ -71,9 +72,9 @@ export default function SettingsPage() {
       {/* プロフィール画像 */}
       <div className="flex flex-col items-center gap-3 mb-6">
         <div className="w-28 h-28 rounded-full overflow-hidden border-2 border-[#FF6B35]">
-          {displayUrl ? (
+          {selectedImage || user.avatarUrl ? (
             <Image
-              src={displayUrl}
+              src={selectedImage || user.avatarUrl!}
               alt="avatar"
               width={112}
               height={112}
@@ -105,20 +106,22 @@ export default function SettingsPage() {
       </div>
 
       {/* 更新ボタン */}
-      <button
+      <Button
         onClick={handleUpdate}
         className="w-full py-2 bg-[#FF6B35] text-white rounded-xl mb-6"
       >
         プロフィールを更新
-      </button>
+      </Button>
 
       {/* ログアウトリンク */}
-      <button
-        onClick={() => setIsModalOpen(true)}
-        className="text-[#FF6B35] underline"
-      >
-        ログアウト
-      </button>
+      <div>
+        <button
+          onClick={() => setIsModalOpen(true)}
+          className="text-[#FF6B35] underline"
+        >
+          ログアウト
+        </button>
+      </div>
 
       {/* ログアウトモーダル */}
       <Dialog

@@ -28,7 +28,7 @@ export const UserProvider = ({ children }: { children: React.ReactNode }) => {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const unsub = onAuthStateChanged(auth, async (fbUser: FBUser | null) => {
+    const unsubscribe = onAuthStateChanged(auth, async (fbUser: FBUser | null) => {
       if (fbUser) {
         try {
           const snap = await getDoc(doc(db, "users", fbUser.uid));
@@ -38,7 +38,8 @@ export const UserProvider = ({ children }: { children: React.ReactNode }) => {
           } else {
             setUser(null);
           }
-        } catch {
+        } catch (err) {
+          console.error("Firestore 取得エラー:", err);
           setUser(null);
         }
       } else {
@@ -46,7 +47,8 @@ export const UserProvider = ({ children }: { children: React.ReactNode }) => {
       }
       setLoading(false);
     });
-    return () => unsub();
+
+    return () => unsubscribe();
   }, []);
 
   return (
