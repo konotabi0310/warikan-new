@@ -1,10 +1,12 @@
+// src/app/start/page.tsx
 "use client";
+
 import React from "react";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
 import { Button } from "@/components/ui/button";
 
-export default function StartPage(): JSX.Element {
+export default function StartPage() {
   const router = useRouter();
 
   return (
