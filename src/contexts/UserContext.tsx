@@ -1,22 +1,32 @@
 // src/contexts/UserContext.tsx
 "use client";
 
-import React, { createContext, useContext, useEffect, useState } from "react";
-import { onAuthStateChanged, User as FBUser } from "firebase/auth";
+import React, {
+  createContext,
+  useContext,
+  useEffect,
+  useState,
+} from "react";
+import {
+  onAuthStateChanged,
+  setPersistence,
+  browserLocalPersistence,
+  User as FBUser,
+} from "firebase/auth";
 import { auth, db } from "@/lib/firebase";
 import { doc, getDoc } from "firebase/firestore";
 
 export type UserType = {
-  uid: string;
-  name: string;
+  uid:      string;
+  name:     string;
   username: string;
-  email: string;
-  pairId: string;
+  email:    string;
+  pairId:   string;
   avatarUrl?: string;
 };
 
 type ContextType = {
-  user: UserType | null;
+  user:    UserType | null;
   loading: boolean;
   setUser: React.Dispatch<React.SetStateAction<UserType | null>>;
 };
@@ -24,17 +34,20 @@ type ContextType = {
 const UserContext = createContext<ContextType | null>(null);
 
 export const UserProvider = ({ children }: { children: React.ReactNode }) => {
-  const [user, setUser] = useState<UserType | null>(null);
+  const [user,    setUser]    = useState<UserType | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, async (fbUser: FBUser | null) => {
+    // クライアントサイドで永続化を設定
+    setPersistence(auth, browserLocalPersistence).catch(console.error);
+
+    // 認証状態の監視
+    const unsub = onAuthStateChanged(auth, async (fbUser: FBUser | null) => {
       if (fbUser) {
         try {
           const snap = await getDoc(doc(db, "users", fbUser.uid));
           if (snap.exists()) {
-            const data = snap.data() as Omit<UserType, "uid">;
-            setUser({ uid: fbUser.uid, ...data });
+            setUser({ uid: fbUser.uid, ...(snap.data() as any) });
           } else {
             setUser(null);
           }
@@ -48,7 +61,7 @@ export const UserProvider = ({ children }: { children: React.ReactNode }) => {
       setLoading(false);
     });
 
-    return () => unsubscribe();
+    return () => unsub();
   }, []);
 
   return (
